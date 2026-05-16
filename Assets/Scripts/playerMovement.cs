@@ -7,7 +7,14 @@ public class PlayerMovement : MonoBehaviour
 {
     bool isFacingRight = true;
     bool isGrounded = true;
+    
     public Rigidbody2D rb;
+    public Animator animator;
+    public ParticleSystem WalkParticles;
+
+    [Header("Change")]
+    public bool isRosso = false;
+    
     [Header("Movement")]
     public float moveSpeed = 5f;
     float horizontalMovement;
@@ -16,6 +23,16 @@ public class PlayerMovement : MonoBehaviour
     public float jumpPower = 10f;
     public int maxJumps = 1;
     private int jumpsRemaining;
+
+    [Header("Dashing")]
+    public float dashPower = 20f;
+    public float dashDuration = 0.1f;
+    public float dashTime = 0.3f; //Cooldown of the  dash
+    private bool isDashing;
+    private bool canDash = true;
+    public float dashDirection = 1f;
+    
+
 
     [Header("GroundCheck")]
     public Transform groundCheckPos;
@@ -43,9 +60,21 @@ public class PlayerMovement : MonoBehaviour
     float wallJumpTimer;
     public Vector2 wallJumpPower = new Vector2(4f, 10f);
 
+    
+    
+
     void Update()
     {
-        
+        animator.SetFloat("yVelocity", rb.linearVelocity.y);
+        animator.SetFloat("magnitude", rb.linearVelocity.magnitude);
+        animator.SetBool("isWallSliding", isWallSliding);
+        animator.SetBool("isRosso", isRosso);
+
+        //While dashing other inputs are disabled
+        if(isDashing == true)
+        {
+            return;
+        }
         GroundCheck();
         ProcessGravity();
         ProcessWallslide();
@@ -56,6 +85,8 @@ public class PlayerMovement : MonoBehaviour
             rb.linearVelocity = new Vector2(horizontalMovement * moveSpeed, rb.linearVelocity.y);
             Flip();
         }
+        
+        
     }
 
     private void ProcessGravity()
@@ -107,6 +138,60 @@ public class PlayerMovement : MonoBehaviour
         isWallJumping = false;
     }
 
+    //Change between characters
+    public void Change(InputAction.CallbackContext context)
+    {
+       if(context.performed)
+       { 
+            animator.SetTrigger("change");
+            if(isRosso)//Cambiar a Blu
+            {
+                isRosso = false;
+                jumpPower = 10f;
+                moveSpeed = 5f; 
+            }
+            //Cambiar a Rosso
+            else
+            {
+                isRosso = true; 
+                jumpPower = 8f;
+                moveSpeed = 7f;
+            }    
+       }
+    }
+
+    public void Dash(InputAction.CallbackContext context)
+    {
+        if(context.performed && isRosso && canDash)
+        {
+            
+            StartCoroutine(DashCorutine());
+        }
+    }
+
+    private IEnumerator DashCorutine()
+    {
+        canDash = false;    
+        isDashing = true;
+        if(isFacingRight)
+        {
+            
+            dashDirection = 1f;
+        }
+        else
+        {
+            dashDirection = -1f;
+        }
+        animator.SetTrigger("dash");
+        WalkParticles.Play();
+        rb.linearVelocity = new Vector2(dashDirection * dashPower, rb.linearVelocity.y); //Perform the dash
+        yield return new WaitForSeconds(dashDuration);
+        rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y); //Stop the momentum
+        isDashing = false;
+        yield return new WaitForSeconds(dashTime);
+        canDash = true;
+            
+    }
 
     public void Move(InputAction.CallbackContext context)
     {
@@ -122,24 +207,39 @@ public class PlayerMovement : MonoBehaviour
                 //Hold down jump button = full height
                 rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpPower);
                 jumpsRemaining--;
+                JumpFX();
             }
             else if (context.canceled && rb.linearVelocity.y > 0)
             {
                 //Light tap of jump button = half the height
-                rb.linearVelocity = new Vector2(rb.linearVelocity.x, rb.linearVelocity.y * 0.5f);
+                if(isRosso)
+                {
+                    rb.linearVelocity = new Vector2(rb.linearVelocity.x, rb.linearVelocity.y * 0.5f);
+                }
+                else
+                {
+                    rb.linearVelocity = new Vector2(rb.linearVelocity.x, rb.linearVelocity.y * 0.5f);
+                }
                 jumpsRemaining--;
+                JumpFX();
             }
         }
 
         //Wall jump
         if(context.performed && wallJumpTimer > 0f)
         {
-            isWallJumping = true;
-            rb.linearVelocity = new Vector2(wallJumpDirection * wallJumpPower.x, wallJumpPower.y); //Bouncing off the wall
+            
+            if(!isRosso)
+            {
+                isWallJumping = true;
+                rb.linearVelocity = new Vector2(wallJumpDirection * wallJumpPower.x, wallJumpPower.y); //Bouncing off the wall
+            }
+            
             wallJumpTimer = 0;
+            JumpFX();
 
             //flip character
-            if(transform.localScale.x != wallJumpDirection)
+            if(transform.localScale.x != wallJumpDirection && !isRosso)
             {
                 isFacingRight = !isFacingRight;
                 Vector3 ls = transform.localScale;
@@ -148,6 +248,12 @@ public class PlayerMovement : MonoBehaviour
             }
             Invoke(nameof(CancelWallJump), wallJumpTime + 0.1f);
         }
+    }
+
+    private void JumpFX()
+    {
+         animator.SetTrigger("jump");
+         WalkParticles.Play();
     }
 
     private void GroundCheck()
@@ -160,6 +266,7 @@ public class PlayerMovement : MonoBehaviour
         else
         {
             isGrounded = false;
+            jumpsRemaining = 0;
         }
     }
 
@@ -176,6 +283,10 @@ public class PlayerMovement : MonoBehaviour
             Vector3 ls = transform.localScale;
             ls.x *= -1f;
             transform.localScale = ls;
+        }
+        if(rb.linearVelocity.y == 0)
+        {
+            WalkParticles.Play();
         }
     }
 
